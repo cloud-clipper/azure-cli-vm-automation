@@ -1,0 +1,90 @@
+#!/bin/bash
+
+# Exit on error
+set -e
+
+# -----------------------------
+# Input Parameters
+# -----------------------------
+LOCATION=${1:-eastus}
+VM_COUNT=${2:-3}
+
+# Validate VM count is numeric
+if ! [[ "$VM_COUNT" =~ ^[0-9]+$ ]]; then
+  echo "Error: VM count must be a number."
+  exit 1
+fi
+
+# -----------------------------
+# Variables
+# -----------------------------
+RESOURCE_GROUP="rg-linux-vm-demo"
+VNET_NAME="vnet-linux-demo"
+SUBNET_NAME="subnet-linux"
+NSG_NAME="nsg-linux"
+VM_SIZE="Standard_B2s"
+ADMIN_USER="azureuser"
+IMAGE="Ubuntu2204"
+DISK_SIZE=30
+STORAGE_SKU="Premium_LRS"
+
+echo "-------------------------------------"
+echo "Region       : $LOCATION"
+echo "VM Count     : $VM_COUNT"
+echo "Disk Size    : ${DISK_SIZE}GB Premium SSD"
+echo "-------------------------------------"
+
+# -----------------------------
+# Create Resource Group
+# -----------------------------
+az group create \
+  --name $RESOURCE_GROUP \
+  --location $LOCATION
+
+# -----------------------------
+# Create Networking
+# -----------------------------
+az network vnet create \
+  --resource-group $RESOURCE_GROUP \
+  --name $VNET_NAME \
+  --subnet-name $SUBNET_NAME
+
+az network nsg create \
+  --resource-group $RESOURCE_GROUP \
+  --name $NSG_NAME
+
+az network nsg rule create \
+  --resource-group $RESOURCE_GROUP \
+  --nsg-name $NSG_NAME \
+  --name Allow-SSH \
+  --protocol Tcp \
+  --priority 1000 \
+  --destination-port-range 22 \
+  --access Allow
+
+# -----------------------------
+# Deploy VMs
+# -----------------------------
+echo "Deploying $VM_COUNT Linux VM(s)..."
+
+for (( i=1; i<=VM_COUNT; i++ ))
+do
+  echo "Creating linuxvm$i..."
+
+  az vm create \
+    --resource-group $RESOURCE_GROUP \
+    --name linuxvm$i \
+    --image $IMAGE \
+    --size $VM_SIZE \
+    --admin-username $ADMIN_USER \
+    --generate-ssh-keys \
+    --vnet-name $VNET_NAME \
+    --subnet $SUBNET_NAME \
+    --nsg $NSG_NAME \
+    --os-disk-size-gb $DISK_SIZE \
+    --storage-sku $STORAGE_SKU
+done
+
+echo "-------------------------------------"
+echo "Deployment Complete!"
+az vm list -d -g $RESOURCE_GROUP -o table
